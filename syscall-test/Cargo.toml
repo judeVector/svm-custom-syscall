@@ -1,0 +1,18 @@
+cargo-features = ["edition2024"]
+
+[package]
+name = "syscall-test"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = { path = "../solana-sdk/program" }
+solana-sysvar-id = {path = "../solana-sdk/sysvar-id" }
+solana-system-interface = { path = "../system/interface", features = ["bincode"] }
+base64ct = "=1.6.0"
+
+[patch.crates-io]
+solana-program = { path = "../solana-sdk/program" }
