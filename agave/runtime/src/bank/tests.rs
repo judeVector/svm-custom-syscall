@@ -1020,7 +1020,7 @@ fn test_purge_empty_accounts() {
 
         if pass == 0 {
             add_root_and_flush_write_cache(&bank0);
-            assert!(bank0.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank0.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
             continue;
         }
 
@@ -1029,14 +1029,14 @@ fn test_purge_empty_accounts() {
         bank0.squash();
         add_root_and_flush_write_cache(&bank0);
         if pass == 1 {
-            assert!(bank0.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank0.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
             continue;
         }
 
         bank1.freeze();
         bank1.squash();
         add_root_and_flush_write_cache(&bank1);
-        assert!(bank1.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+        assert!(bank1.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
 
         // keypair should have 0 tokens on both forks
         assert_eq!(bank0.get_account(&keypair.pubkey()), None);
@@ -1044,7 +1044,7 @@ fn test_purge_empty_accounts() {
 
         bank1.clean_accounts_for_tests();
 
-        assert!(bank1.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+        assert!(bank1.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
     }
 }
 
@@ -2180,7 +2180,7 @@ fn test_bank_hash_internal_state() {
     bank2.transfer(amount, &mint_keypair, &pubkey2).unwrap();
     bank2.squash();
     bank2.force_flush_accounts_cache();
-    assert!(bank2.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+    assert!(bank2.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
 }
 
 #[test]
@@ -2214,7 +2214,7 @@ fn test_bank_hash_internal_state_verify() {
             // we later modify bank 2, so this flush is destructive to the test
             bank2.freeze();
             add_root_and_flush_write_cache(&bank2);
-            assert!(bank2.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank2.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
         }
         let bank3 = new_bank_from_parent_with_bank_forks(
             &bank_forks,
@@ -2225,7 +2225,7 @@ fn test_bank_hash_internal_state_verify() {
         assert_eq!(bank0_state, bank0.hash_internal_state());
         if pass == 0 {
             // this relies on us having set bank2's accounts hash in the pass==0 if above
-            assert!(bank2.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank2.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
             continue;
         }
         if pass == 1 {
@@ -2234,7 +2234,7 @@ fn test_bank_hash_internal_state_verify() {
             // Doing so throws an assert. So, we can't flush 3 until 2 is flushed.
             bank3.freeze();
             add_root_and_flush_write_cache(&bank3);
-            assert!(bank3.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank3.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
             continue;
         }
 
@@ -2243,7 +2243,7 @@ fn test_bank_hash_internal_state_verify() {
         bank2.freeze(); // <-- keep freeze() *outside* `if pass == 2 {}`
         if pass == 2 {
             add_root_and_flush_write_cache(&bank2);
-            assert!(bank2.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+            assert!(bank2.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
 
             // Verifying the accounts lt hash is only intended to be called at startup, and
             // normally in the background.  Since here we're *not* at startup, and doing it
@@ -2258,7 +2258,7 @@ fn test_bank_hash_internal_state_verify() {
 
         bank3.freeze();
         add_root_and_flush_write_cache(&bank3);
-        assert!(bank3.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+        assert!(bank3.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
     }
 }
 
@@ -3409,7 +3409,7 @@ fn test_add_builtin() {
     declare_process_instruction!(MockBuiltin, 1, |invoke_context| {
         let transaction_context = &invoke_context.transaction_context;
         let instruction_context = transaction_context.get_current_instruction_context()?;
-        let program_id = instruction_context.get_last_program_key(transaction_context)?;
+        let program_id = instruction_context.get_program_key(transaction_context)?;
         if mock_vote_program_id() != *program_id {
             return Err(InstructionError::IncorrectProgramId);
         }
@@ -5203,7 +5203,7 @@ fn test_same_program_id_uses_unique_executable_accounts() {
         let transaction_context = &invoke_context.transaction_context;
         let instruction_context = transaction_context.get_current_instruction_context()?;
         instruction_context
-            .try_borrow_program_account(transaction_context, 0)?
+            .try_borrow_program_account(transaction_context)?
             .set_data_length(2)
     });
 
@@ -5842,7 +5842,11 @@ fn test_bank_load_program() {
     assert!(bank.process_transaction(&transaction).is_ok());
 
     {
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let [program] = program_cache.get_slot_versions_for_tests(&program_key) else {
             panic!();
         };
@@ -5892,7 +5896,11 @@ fn test_bpf_loader_upgradeable_deploy_with_max_len(formalize_loaded_transaction_
     );
     {
         // Make sure it is not in the cache because the account owner is not a loader
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&program_keypair.pubkey());
         assert!(slot_versions.is_empty());
     }
@@ -5968,7 +5976,11 @@ fn test_bpf_loader_upgradeable_deploy_with_max_len(formalize_loaded_transaction_
         )),
     );
     {
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&program_keypair.pubkey());
         assert_eq!(slot_versions.len(), 1);
         assert_eq!(slot_versions[0].deployment_slot, bank.slot());
@@ -5992,7 +6004,11 @@ fn test_bpf_loader_upgradeable_deploy_with_max_len(formalize_loaded_transaction_
         )),
     );
     {
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&buffer_address);
         assert_eq!(slot_versions.len(), 1);
         assert_eq!(slot_versions[0].deployment_slot, bank.slot());
@@ -6094,7 +6110,11 @@ fn test_bpf_loader_upgradeable_deploy_with_max_len(formalize_loaded_transaction_
     let transaction = Transaction::new(&[&binding], invocation_message, bank.last_blockhash());
     assert!(bank.process_transaction(&transaction).is_ok());
     {
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&program_keypair.pubkey());
         assert_eq!(slot_versions.len(), 2);
         assert_eq!(slot_versions[0].deployment_slot, bank.slot() - 1);
@@ -10783,14 +10803,14 @@ fn test_feature_activation_loaded_programs_cache_preparation_phase(
     let bank = new_bank_from_parent_with_bank_forks(&bank_forks, bank, &Pubkey::default(), 16);
     let current_env = bank
         .transaction_processor
-        .program_cache
+        .global_program_cache
         .read()
         .unwrap()
         .get_environments_for_epoch(0)
         .program_runtime_v1;
     let upcoming_env = bank
         .transaction_processor
-        .program_cache
+        .global_program_cache
         .read()
         .unwrap()
         .get_environments_for_epoch(1)
@@ -10798,7 +10818,11 @@ fn test_feature_activation_loaded_programs_cache_preparation_phase(
 
     // Advance the bank to recompile the program.
     {
-        let program_cache = bank.transaction_processor.program_cache.read().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .read()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&program_keypair.pubkey());
         assert_eq!(slot_versions.len(), 1);
         assert!(Arc::ptr_eq(
@@ -10809,7 +10833,11 @@ fn test_feature_activation_loaded_programs_cache_preparation_phase(
     goto_end_of_slot(bank.clone());
     let bank = new_from_parent_with_fork_next_slot(bank, bank_forks.as_ref());
     {
-        let program_cache = bank.transaction_processor.program_cache.write().unwrap();
+        let program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .write()
+            .unwrap();
         let slot_versions = program_cache.get_slot_versions_for_tests(&program_keypair.pubkey());
         assert_eq!(slot_versions.len(), 2);
         assert!(Arc::ptr_eq(
@@ -10896,7 +10924,11 @@ fn test_feature_activation_loaded_programs_epoch_transition() {
 
     {
         // Prune for rerooting and thus finishing the recompilation phase.
-        let mut program_cache = bank.transaction_processor.program_cache.write().unwrap();
+        let mut program_cache = bank
+            .transaction_processor
+            .global_program_cache
+            .write()
+            .unwrap();
         program_cache.prune(bank.slot(), bank.epoch());
 
         // Unload all (which is only the entry with the new environment)
@@ -10911,7 +10943,7 @@ fn test_feature_activation_loaded_programs_epoch_transition() {
 }
 
 #[test]
-fn test_verify_accounts_hash() {
+fn test_verify_accounts() {
     let GenesisConfigInfo {
         mut genesis_config,
         mint_keypair: mint,
@@ -10962,8 +10994,8 @@ fn test_verify_accounts_hash() {
     bank.squash();
     bank.force_flush_accounts_cache();
 
-    // ensure the accounts hash verifies
-    assert!(bank.verify_accounts_hash(VerifyAccountsHashConfig::default_for_test(), None));
+    // ensure the accounts verify successfully
+    assert!(bank.verify_accounts(VerifyAccountsHashConfig::default_for_test(), None));
 }
 
 #[test]

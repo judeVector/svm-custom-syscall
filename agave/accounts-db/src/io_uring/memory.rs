@@ -49,7 +49,7 @@ impl AsMut<[u8]> for LargeBuffer {
 }
 
 impl LargeBuffer {
-    /// Allocare memory buffer optimized for io_uring operations, i.e.
+    /// Allocate memory buffer optimized for io_uring operations, i.e.
     /// using HugeTable when it is available on the host.
     pub fn new(size: usize) -> Self {
         if size > PageAlignedMemory::page_size() {
@@ -198,7 +198,7 @@ impl FixedIoBuffer {
         }
     }
 
-    /// Registed provided buffer as fixed buffer in `io_uring`.
+    /// Register provided buffer as fixed buffer in `io_uring`.
     pub unsafe fn register<S, E: RingOp<S>>(
         buffer: &mut [u8],
         ring: &Ring<S, E>,
@@ -222,6 +222,8 @@ impl AsRef<[u8]> for FixedIoBuffer {
 }
 
 pub fn adjust_ulimit_memlock(min_required: usize) -> io::Result<()> {
+    // This value reflects recommended memory lock limit documented in the validator's
+    // setup instructions at docs/src/operations/guides/validator-start.md
     const DESIRED_MEMLOCK: u64 = 2_000_000_000;
 
     fn get_memlock() -> libc::rlimit {
